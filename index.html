@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shape Spirograph v3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&family=Space+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0f;
+    color: #e0e0e8;
+    font-family: 'Outfit', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    gap: 14px;
+  }
+
+  h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.3rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #ff6b9d, #c44dff, #6bbaff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    max-width: 960px;
+  }
+
+  .control-group {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-group label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #888;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .control-group input[type="text"],
+  .control-group select {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #e0e0e8;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 1rem;
+    width: 100px;
+    outline: none;
+  }
+
+  .control-group input[type="range"] {
+    width: 100px;
+    accent-color: #c44dff;
+  }
+
+  .range-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: #c44dff;
+    text-align: right;
+  }
+
+  button {
+    background: linear-gradient(135deg, #c44dff, #6bbaff);
+    border: none;
+    color: #fff;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 10px 22px;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(196, 77, 255, 0.4);
+  }
+
+  button.secondary {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  button.active {
+    background: rgba(255,180,50,0.3);
+    border: 1px solid rgba(255,180,50,0.6);
+  }
+
+  .canvas-wrap {
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    overflow: hidden;
+    background: #f0ece4;
+  }
+
+  canvas { display: block; }
+
+  .presets {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .presets button {
+    padding: 6px 14px;
+    font-size: 0.78rem;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  .presets button:hover {
+    background: rgba(196, 77, 255, 0.2);
+    border-color: #c44dff;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .status {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    color: #888;
+    height: 1.2em;
+  }
+
+  .export-bar {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  .export-btn {
+    background: rgba(100, 220, 140, 0.15);
+    border: 1px solid rgba(100, 220, 140, 0.4);
+    color: #8fffb0;
+    font-size: 0.9rem;
+    padding: 10px 28px;
+    border-radius: 8px;
+  }
+  .export-btn:hover {
+    background: rgba(100, 220, 140, 0.3);
+    border-color: rgba(100, 220, 140, 0.7);
+    box-shadow: 0 4px 16px rgba(100, 220, 140, 0.25);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>✦ Shape Spirograph ✦</h1>
+
+  <div class="presets">
+    <button onclick="setShape('U')">U</button>
+    <button onclick="setShape('T')">T</button>
+    <button onclick="setShape('1')">1</button>
+    <button onclick="setShape('A')">A</button>
+    <button onclick="setShape('S')">S</button>
+    <button onclick="setShape('★')">★</button>
+    <button onclick="setShape('♡')">♡</button>
+    <button onclick="setShape('あ')">あ</button>
+  </div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>文字 / Shape</label>
+      <input type="text" id="shapeText" value="U" maxlength="4">
+    </div>
+    <div class="control-group">
+      <label>ギア半径</label>
+      <input type="range" id="gearRadius" min="8" max="60" value="28">
+      <span class="range-val" id="gearRadiusVal">28</span>
+    </div>
+    <div class="control-group">
+      <label>ペン距離</label>
+      <input type="range" id="penDist" min="5" max="80" value="22">
+      <span class="range-val" id="penDistVal">22</span>
+    </div>
+    <div class="control-group">
+      <label>周回数</label>
+      <input type="range" id="loops" min="1" max="60" value="25">
+      <span class="range-val" id="loopsVal">25</span>
+    </div>
+    <div class="control-group">
+      <label>スピード</label>
+      <input type="range" id="speed" min="1" max="50" value="10">
+      <span class="range-val" id="speedVal">10</span>
+    </div>
+    <div class="control-group">
+      <label>色</label>
+      <select id="colorMode">
+        <option value="blue">ブルー</option>
+        <option value="pink-purple">ピンク×パープル</option>
+        <option value="red">レッド</option>
+        <option value="green">グリーン</option>
+        <option value="rainbow">レインボー</option>
+      </select>
+    </div>
+    <div class="control-group" style="justify-content:flex-end;">
+      <button onclick="startDraw(false)">▶ 描画</button>
+    </div>
+    <div class="control-group" style="justify-content:flex-end;">
+      <button id="debugBtn" onclick="toggleDebug()">🔍 デバッグ</button>
+    </div>
+    <div class="control-group" style="justify-content:flex-end;">
+      <button class="secondary" onclick="clearCanvas()">クリア</button>
+    </div>
+  </div>
+
+  <div class="export-bar">
+    <button class="export-btn" onclick="exportSVG()">💾 SVG書き出し</button>
+    <button class="export-btn" onclick="exportPNG()">💾 PNG書き出し</button>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// HiDPI / Retina support
+const dpr = window.devicePixelRatio || 1;
+const CSS_W = 800, CSS_H = 800;
+canvas.width = CSS_W * dpr;
+canvas.height = CSS_H * dpr;
+canvas.style.width = CSS_W + 'px';
+canvas.style.height = CSS_H + 'px';
+ctx.scale(dpr, dpr);
+
+const W = CSS_W, H = CSS_H;
+
+let animId = null;
+let drawing = false;
+let debugMode = false;
+
+// Record all strokes for SVG export
+// Each entry: { x1, y1, x2, y2, color, width }
+let recordedStrokes = [];
+let recordedContours = []; // faint shape outlines
+
+// Slider updates
+document.querySelectorAll('input[type=range]').forEach(inp => {
+  inp.addEventListener('input', () => {
+    document.getElementById(inp.id + 'Val').textContent = inp.value;
+  });
+});
+
+function setShape(s) { document.getElementById('shapeText').value = s; }
+function setStatus(s) { document.getElementById('status').textContent = s; }
+function toggleDebug() {
+  debugMode = !debugMode;
+  document.getElementById('debugBtn').classList.toggle('active', debugMode);
+  startDraw(debugMode);
+}
+
+// =========================================================
+// CONTOUR EXTRACTION — Moore neighbour tracing (single outer loop per blob)
+// =========================================================
+
+function extractContours(text) {
+  const res = 400;
+  const off = document.createElement('canvas');
+  off.width = res; off.height = res;
+  const octx = off.getContext('2d');
+
+  octx.fillStyle = '#000';
+  octx.fillRect(0, 0, res, res);
+  octx.fillStyle = '#fff';
+  octx.textAlign = 'center';
+  octx.textBaseline = 'middle';
+  const fontSize = text.length === 1 ? res * 0.72 : text.length === 2 ? res * 0.52 : res * 0.38;
+  octx.font = `bold ${fontSize}px "Helvetica Neue", Arial, sans-serif`;
+  octx.fillText(text, res / 2, res / 2);
+
+  const imgData = octx.getImageData(0, 0, res, res);
+  const data = imgData.data;
+  const filled = (x, y) => x >= 0 && x < res && y >= 0 && y < res && data[(y * res + x) * 4] > 128;
+
+  // Moore-neighbour contour tracing.
+  // Produces one ordered closed loop per connected foreground blob (outer boundary only).
+  // Ref: "A Contour Tracing Algorithm" (Theo Pavlidis variant / Jacob's stopping criterion)
+
+  // 8-neighbour offsets in clockwise order starting from "right"
+  const DIRS = [
+    { dx:  1, dy:  0 },
+    { dx:  1, dy:  1 },
+    { dx:  0, dy:  1 },
+    { dx: -1, dy:  1 },
+    { dx: -1, dy:  0 },
+    { dx: -1, dy: -1 },
+    { dx:  0, dy: -1 },
+    { dx:  1, dy: -1 },
+  ];
+
+  // Find all foreground blobs by scanning and flood-filling
+  const blobVisited = new Uint8Array(res * res);
+  const blobs = []; // each blob: Set of pixel keys, plus topmost point
+
+  for (let y = 0; y < res; y++) {
+    for (let x = 0; x < res; x++) {
+      if (!filled(x, y) || blobVisited[y * res + x]) continue;
+      // BFS flood-fill to collect blob pixels
+      const blob = [];
+      const queue = [[x, y]];
+      blobVisited[y * res + x] = 1;
+      while (queue.length) {
+        const [cx, cy] = queue.shift();
+        blob.push([cx, cy]);
+        for (const { dx, dy } of DIRS) {
+          const nx = cx + dx, ny = cy + dy;
+          if (filled(nx, ny) && !blobVisited[ny * res + nx]) {
+            blobVisited[ny * res + nx] = 1;
+            queue.push([nx, ny]);
+          }
+        }
+      }
+      if (blob.length >= 30) blobs.push(blob);
+    }
+  }
+
+  // For each blob, trace the outer contour using Moore neighbour tracing
+  function traceOuterContour(blob) {
+    // Build a fast lookup set
+    const pixSet = new Set(blob.map(([x, y]) => y * res + x));
+    const bfill = (x, y) => pixSet.has(y * res + x);
+
+    // Start: topmost then leftmost pixel of blob
+    let startX = blob[0][0], startY = blob[0][1];
+    for (const [x, y] of blob) {
+      if (y < startY || (y === startY && x < startX)) { startX = x; startY = y; }
+    }
+
+    const contour = [];
+    let cx = startX, cy = startY;
+    let prevDir = 6; // came from above (empty above topmost pixel)
+
+    const maxSteps = blob.length * 4 + 8;
+    // Track visited (position + entry direction) to detect when the loop closes
+    const visitedStates = new Set();
+
+    for (let steps = 0; steps < maxSteps; steps++) {
+      // State = position + prevDir; if we revisit the same state, we've completed a loop
+      const stateKey = (cx << 18) | (cy << 9) | prevDir;
+      if (visitedStates.has(stateKey)) break;
+      visitedStates.add(stateKey);
+
+      contour.push({ x: cx, y: cy });
+
+      // Search clockwise starting from backtrack direction (180° turn)
+      let found = false;
+      const startDir = (prevDir + 6) % 8;
+      for (let k = 0; k < 8; k++) {
+        const d = (startDir + k) % 8;
+        const nx = cx + DIRS[d].dx;
+        const ny = cy + DIRS[d].dy;
+        if (bfill(nx, ny)) {
+          prevDir = d;
+          cx = nx;
+          cy = ny;
+          found = true;
+          break;
+        }
+      }
+      if (!found) break;
+    }
+
+    return contour;
+  }
+
+  const margin = 80;
+  const scale = (Math.min(W, H) - margin * 2) / res;
+  const ox = (W - res * scale) / 2;
+  const oy = (H - res * scale) / 2;
+
+  const result = [];
+  for (const blob of blobs) {
+    const contour = traceOuterContour(blob);
+    if (contour.length < 20) continue;
+    const scaled = contour.map(p => ({
+      x: p.x * scale + ox,
+      y: p.y * scale + oy
+    }));
+    result.push(smoothAndResample(scaled, Math.min(contour.length, 1200)));
+  }
+  return result;
+}
+
+
+function smoothAndResample(pts, numPoints) {
+  if (pts.length < 4) return pts;
+
+  // Smooth — more iterations and wider kernel for stable normals
+  for (let iter = 0; iter < 12; iter++) {
+    const s = [];
+    for (let i = 0; i < pts.length; i++) {
+      const p2 = pts[(i - 2 + pts.length) % pts.length];
+      const p1 = pts[(i - 1 + pts.length) % pts.length];
+      const c  = pts[i];
+      const n1 = pts[(i + 1) % pts.length];
+      const n2 = pts[(i + 2) % pts.length];
+      s.push({
+        x: p2.x * 0.05 + p1.x * 0.2 + c.x * 0.5 + n1.x * 0.2 + n2.x * 0.05,
+        y: p2.y * 0.05 + p1.y * 0.2 + c.y * 0.5 + n1.y * 0.2 + n2.y * 0.05
+      });
+    }
+    pts = s;
+  }
+
+  // Compute total length including closing segment
+  let totalLen = 0;
+  const lens = [0];
+  for (let i = 1; i < pts.length; i++) {
+    totalLen += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+    lens.push(totalLen);
+  }
+  totalLen += Math.hypot(pts[0].x - pts[pts.length-1].x, pts[0].y - pts[pts.length-1].y);
+
+  // Resample uniformly
+  const step = totalLen / numPoints;
+  const result = [];
+  let ptIdx = 0;
+
+  for (let i = 0; i < numPoints; i++) {
+    const target = i * step;
+    while (ptIdx < pts.length - 1 && lens[ptIdx + 1] < target) ptIdx++;
+    if (ptIdx >= pts.length - 1) {
+      const segStart = lens[pts.length - 1];
+      const segLen = totalLen - segStart;
+      const t = segLen > 0 ? (target - segStart) / segLen : 0;
+      result.push({
+        x: pts[pts.length-1].x + t * (pts[0].x - pts[pts.length-1].x),
+        y: pts[pts.length-1].y + t * (pts[0].y - pts[pts.length-1].y)
+      });
+    } else {
+      const segLen = lens[ptIdx+1] - lens[ptIdx];
+      const t = segLen > 0 ? (target - lens[ptIdx]) / segLen : 0;
+      result.push({
+        x: pts[ptIdx].x + t * (pts[ptIdx+1].x - pts[ptIdx].x),
+        y: pts[ptIdx].y + t * (pts[ptIdx+1].y - pts[ptIdx].y)
+      });
+    }
+  }
+  return result;
+}
+
+// =========================================================
+// SPIROGRAPH CORE
+// =========================================================
+
+// Compute centroid of contour
+function getCentroid(pts) {
+  let cx = 0, cy = 0;
+  for (const p of pts) { cx += p.x; cy += p.y; }
+  return { x: cx / pts.length, y: cy / pts.length };
+}
+
+// Determine outward sign once per contour:
+// Test a candidate normal at one point — if it points away from centroid, that's outward.
+function getOutwardSign(pts) {
+  const c = getCentroid(pts);
+  const n = pts.length;
+  // Use point 0 as test point
+  const W = 4;
+  const prev = pts[(0 - W + n) % n];
+  const next = pts[(0 + W) % n];
+  const dx = next.x - prev.x;
+  const dy = next.y - prev.y;
+  // Candidate normal A: (-dy, dx)
+  const nAx = -dy, nAy = dx;
+  // Vector from centroid to contour point
+  const toCx = pts[0].x - c.x;
+  const toCy = pts[0].y - c.y;
+  // If dot(normalA, toCenter) > 0, normalA points outward
+  const dot = nAx * toCx + nAy * toCy;
+  return dot > 0 ? 1 : -1;
+}
+
+// Compute outward normal at index i — uses pre-computed outward sign
+function getOutwardNormal(pts, i, outSign) {
+  const n = pts.length;
+  const W = 4; // average over ±4 neighbours
+  const prev = pts[(i - W + n) % n];
+  const next = pts[(i + W) % n];
+  const dx = next.x - prev.x;
+  const dy = next.y - prev.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return {
+    x: outSign * (-dy) / len,
+    y: outSign * ( dx) / len
+  };
+}
+
+// =========================================================
+// Pre-compute gear-center path with minimum-distance guarantee.
+//
+// The gear center must always be at least gearR away from every
+// point on the contour.  At sharp convex corners the naive offset
+// (pt + normal*R) creates cusps where the path folds back inside.
+//
+// Strategy: "Closest-point push-out" — for each gc point that is
+// too close to the contour, find the closest point on the contour
+// and push the gc AWAY from it to exactly gearR distance.
+// This naturally creates circular arcs around sharp corners (the
+// Minkowski sum behaviour) without any arc-insertion logic.
+//
+// After the initial push, we iteratively smooth and re-enforce to
+// get a clean path.  We also limit consecutive-point jumps.
+// =========================================================
+function buildGearCenterPath(contour, gearR, outSign) {
+  const n = contour.length;
+
+  // Segment lengths along contour
+  const segLens = [];
+  for (let i = 0; i < n; i++) {
+    const a = contour[i];
+    const b = contour[(i + 1) % n];
+    segLens.push(Math.hypot(b.x - a.x, b.y - a.y));
+  }
+
+  // ---- Spatial grid for fast closest-point lookup ----
+  const cellSize = gearR;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let j = 0; j < n; j++) {
+    minX = Math.min(minX, contour[j].x);
+    minY = Math.min(minY, contour[j].y);
+    maxX = Math.max(maxX, contour[j].x);
+    maxY = Math.max(maxY, contour[j].y);
+  }
+  minX -= cellSize * 2; minY -= cellSize * 2;
+  maxX += cellSize * 2; maxY += cellSize * 2;
+  const gridW = Math.ceil((maxX - minX) / cellSize) + 1;
+  const gridH = Math.ceil((maxY - minY) / cellSize) + 1;
+  const grid = new Array(gridW * gridH);
+  for (let g = 0; g < grid.length; g++) grid[g] = [];
+
+  // Insert each contour segment into grid cells it overlaps
+  for (let j = 0; j < n; j++) {
+    const j2 = (j + 1) % n;
+    const x0 = Math.min(contour[j].x, contour[j2].x);
+    const y0 = Math.min(contour[j].y, contour[j2].y);
+    const x1 = Math.max(contour[j].x, contour[j2].x);
+    const y1 = Math.max(contour[j].y, contour[j2].y);
+    const gx0 = Math.max(0, Math.floor((x0 - minX) / cellSize) - 1);
+    const gy0 = Math.max(0, Math.floor((y0 - minY) / cellSize) - 1);
+    const gx1 = Math.min(gridW - 1, Math.floor((x1 - minX) / cellSize) + 1);
+    const gy1 = Math.min(gridH - 1, Math.floor((y1 - minY) / cellSize) + 1);
+    for (let gy = gy0; gy <= gy1; gy++)
+      for (let gx = gx0; gx <= gx1; gx++)
+        grid[gy * gridW + gx].push(j);
+  }
+
+  // Fast closest point on contour using spatial grid
+  function closestOnContour(px, py) {
+    let bestD = Infinity, bestX = 0, bestY = 0;
+    // Search expanding rings of grid cells
+    const gcx = Math.floor((px - minX) / cellSize);
+    const gcy = Math.floor((py - minY) / cellSize);
+    const searchR = 2; // search ±2 cells
+    const gx0 = Math.max(0, gcx - searchR);
+    const gy0 = Math.max(0, gcy - searchR);
+    const gx1 = Math.min(gridW - 1, gcx + searchR);
+    const gy1 = Math.min(gridH - 1, gcy + searchR);
+
+    const checked = new Set();
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const segs = grid[gy * gridW + gx];
+        for (let si = 0; si < segs.length; si++) {
+          const j = segs[si];
+          if (checked.has(j)) continue;
+          checked.add(j);
+          const j2 = (j + 1) % n;
+          const ax = contour[j].x, ay = contour[j].y;
+          const bx = contour[j2].x, by = contour[j2].y;
+          const dx = bx - ax, dy = by - ay;
+          const len2 = dx * dx + dy * dy;
+          let t;
+          if (len2 < 1e-10) { t = 0; }
+          else { t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)); }
+          const cx = ax + t * dx, cy = ay + t * dy;
+          const d = Math.hypot(px - cx, py - cy);
+          if (d < bestD) { bestD = d; bestX = cx; bestY = cy; }
+        }
+      }
+    }
+
+    // Fallback: if grid search found nothing nearby, do brute force
+    if (bestD > cellSize * searchR) {
+      for (let j = 0; j < n; j++) {
+        const j2 = (j + 1) % n;
+        const ax = contour[j].x, ay = contour[j].y;
+        const bx = contour[j2].x, by = contour[j2].y;
+        const dx = bx - ax, dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+        let t;
+        if (len2 < 1e-10) { t = 0; }
+        else { t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)); }
+        const cx = ax + t * dx, cy = ay + t * dy;
+        const d = Math.hypot(px - cx, py - cy);
+        if (d < bestD) { bestD = d; bestX = cx; bestY = cy; }
+      }
+    }
+
+    return { x: bestX, y: bestY, dist: bestD };
+  }
+
+  // ---- Step 1: Naive offset ----
+  const path = [];
+  for (let i = 0; i < n; i++) {
+    const norm = getOutwardNormal(contour, i, outSign);
+    path.push({
+      gcx: contour[i].x + norm.x * gearR,
+      gcy: contour[i].y + norm.y * gearR,
+    });
+  }
+
+  // ---- Step 2: Push-out + smooth cycle ----
+  function enforce(pts) {
+    for (let sub = 0; sub < 5; sub++) {
+      let anyV = false;
+      for (let i = 0; i < n; i++) {
+        const cp = closestOnContour(pts[i].gcx, pts[i].gcy);
+        if (cp.dist < gearR - 0.3) {
+          let dx = pts[i].gcx - cp.x;
+          let dy = pts[i].gcy - cp.y;
+          let len = Math.hypot(dx, dy);
+          if (len < 0.001) {
+            const norm = getOutwardNormal(contour, i, outSign);
+            dx = norm.x; dy = norm.y;
+          } else {
+            dx /= len; dy /= len;
+          }
+          pts[i].gcx = cp.x + dx * gearR;
+          pts[i].gcy = cp.y + dy * gearR;
+          anyV = true;
+        }
+      }
+      if (!anyV) break;
+    }
+  }
+
+  enforce(path);
+
+  for (let iter = 0; iter < 15; iter++) {
+    // Very gentle smooth
+    const alpha = 0.04;
+    const s = [];
+    for (let i = 0; i < n; i++) {
+      const p = path[(i - 1 + n) % n];
+      const c = path[i];
+      const nx = path[(i + 1) % n];
+      s.push({
+        gcx: c.gcx + alpha * ((p.gcx + nx.gcx) / 2 - c.gcx),
+        gcy: c.gcy + alpha * ((p.gcy + nx.gcy) / 2 - c.gcy),
+      });
+    }
+    for (let i = 0; i < n; i++) {
+      path[i].gcx = s[i].gcx;
+      path[i].gcy = s[i].gcy;
+    }
+    enforce(path);
+  }
+
+  // Tangent angles of contour segments (for rolling direction correction)
+  const tangentAngles = [];
+  for (let i = 0; i < n; i++) {
+    const dx = contour[(i + 1) % n].x - contour[i].x;
+    const dy = contour[(i + 1) % n].y - contour[i].y;
+    tangentAngles.push(Math.atan2(dy, dx));
+  }
+
+  return { path, segLens, tangentAngles };
+}
+
+function getColor(t, mode) {
+  t = ((t % 1) + 1) % 1;
+  switch (mode) {
+    case 'blue': {
+      const r = 15 + Math.sin(t * Math.PI * 8) * 15;
+      const g = 40 + Math.sin(t * Math.PI * 8 + 1) * 40;
+      const b = 170 + Math.sin(t * Math.PI * 6) * 60;
+      return `rgba(${r|0},${g|0},${b|0},0.5)`;
+    }
+    case 'pink-purple': {
+      const phase = t * Math.PI * 2;
+      const r = 180 + Math.sin(phase) * 60;
+      const g = 50 + Math.sin(phase + 2) * 40;
+      const b = 160 + Math.sin(phase + 4) * 80;
+      return `rgba(${r|0},${g|0},${b|0},0.45)`;
+    }
+    case 'red': {
+      return `rgba(${200 + Math.sin(t*20)*40|0},${30|0},${30|0},0.5)`;
+    }
+    case 'green': {
+      return `rgba(${30|0},${150 + Math.sin(t*20)*60|0},${60|0},0.5)`;
+    }
+    case 'rainbow': {
+      const r = Math.sin(t * Math.PI * 2) * 127 + 128;
+      const g = Math.sin(t * Math.PI * 2 + 2.094) * 127 + 128;
+      const b = Math.sin(t * Math.PI * 2 + 4.189) * 127 + 128;
+      return `rgba(${r|0},${g|0},${b|0},0.55)`;
+    }
+  }
+}
+
+function clearCanvas() {
+  if (animId) cancelAnimationFrame(animId);
+  drawing = false;
+  ctx.fillStyle = '#f0ece4';
+  ctx.fillRect(0, 0, W, H);
+  setStatus('');
+}
+
+// =========================================================
+// DRAW (with optional debug visualization)
+// =========================================================
+
+function startDraw(debug) {
+  if (animId) cancelAnimationFrame(animId);
+  drawing = false;
+
+  if (debug === undefined) debug = debugMode;
+
+  const text = document.getElementById('shapeText').value || 'U';
+  const gearR = +document.getElementById('gearRadius').value;
+  const penD = +document.getElementById('penDist').value;
+  const totalLoops = +document.getElementById('loops').value;
+  const colorMode = document.getElementById('colorMode').value;
+
+  clearCanvas();
+  setStatus('輪郭を抽出中...');
+
+  const contours = extractContours(text);
+  if (!contours.length) { setStatus('輪郭なし'); return; }
+
+  // Reset recorded data
+  recordedStrokes = [];
+  recordedContours = contours.map(c => c.slice());
+
+  // Draw the shape outline
+  contours.forEach(c => {
+    ctx.beginPath();
+    ctx.moveTo(c[0].x, c[0].y);
+    for (let i = 1; i < c.length; i++) ctx.lineTo(c[i].x, c[i].y);
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  drawing = true;
+
+  if (debug) {
+    // デバッグ完了後に通常描画を続けて全輪郭を描く
+    drawDebug(contours, gearR, penD, colorMode, () => {
+      // デバッグ完了後: 全輪郭をフル描画
+      drawing = true;
+      drawAllContours(contours, gearR, penD, totalLoops, colorMode);
+    });
+  } else {
+    drawAllContours(contours, gearR, penD, totalLoops, colorMode);
+  }
+}
+
+function drawAllContours(contours, gearR, penD, totalLoops, colorMode) {
+  let ci = 0;
+  function next() {
+    if (ci >= contours.length || !drawing) { setStatus('完了！'); drawing = false; return; }
+    drawContourSpiro(contours[ci], gearR, penD, totalLoops, colorMode, () => { ci++; next(); });
+  }
+  next();
+}
+
+function drawContourSpiro(contour, gearR, penD, totalLoops, colorMode, onDone) {
+  const n = contour.length;
+  const outSign = getOutwardSign(contour);
+  const { path: gcPath, segLens, tangentAngles } = buildGearCenterPath(contour, gearR, outSign);
+
+  const totalSteps = n * totalLoops;
+  let step = 0;
+  let cumDist = 0;
+  let cumTurn = 0;  // cumulative contour turning angle
+  let prevPen = null;
+
+  const speedVal = +document.getElementById('speed').value;
+  const stepsPerFrame = Math.max(1, Math.floor(speedVal * n * totalLoops / 500));
+
+  function frame() {
+    if (!drawing) return;
+
+    for (let s = 0; s < stepsPerFrame && step < totalSteps; s++, step++) {
+      const i = step % n;
+
+      // Accumulate distance and contour turning angle
+      if (step > 0) {
+        const iPrev = (step - 1) % n;
+        cumDist += segLens[iPrev];
+        // Accumulate change in contour tangent direction (orbital turning)
+        let da = tangentAngles[i] - tangentAngles[iPrev];
+        while (da > Math.PI) da -= 2 * Math.PI;
+        while (da < -Math.PI) da += 2 * Math.PI;
+        cumTurn += da;
+      }
+
+      const gcx = gcPath[i].gcx;
+      const gcy = gcPath[i].gcy;
+      const gearAngle = cumDist / gearR + cumTurn;
+
+      const penX = gcx + Math.cos(gearAngle) * penD;
+      const penY = gcy + Math.sin(gearAngle) * penD;
+
+      if (prevPen) {
+        const t = step / totalSteps;
+        const color = getColor(t * totalLoops * 0.3, colorMode);
+        ctx.beginPath();
+        ctx.moveTo(prevPen.x, prevPen.y);
+        ctx.lineTo(penX, penY);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 0.55;
+        ctx.stroke();
+        recordedStrokes.push({ x1: prevPen.x, y1: prevPen.y, x2: penX, y2: penY, color, width: 0.55 });
+      }
+      prevPen = { x: penX, y: penY };
+    }
+
+    setStatus(`描画中... ${Math.min(100, (step / totalSteps * 100) | 0)}%`);
+    if (step < totalSteps) animId = requestAnimationFrame(frame);
+    else if (onDone) onDone();
+  }
+  animId = requestAnimationFrame(frame);
+}
+
+// =========================================================
+// DEBUG MODE - slow animation showing gear rolling
+// =========================================================
+
+function drawDebug(contours, gearR, penD, colorMode, onDone) {
+  const contour = contours[0]; // just show first contour
+  const n = contour.length;
+  const outSign = getOutwardSign(contour);
+  const { path: gcPath, segLens, tangentAngles } = buildGearCenterPath(contour, gearR, outSign);
+
+  // Draw the contour more visibly
+  ctx.beginPath();
+  ctx.moveTo(contour[0].x, contour[0].y);
+  for (let i = 1; i < n; i++) ctx.lineTo(contour[i].x, contour[i].y);
+  ctx.closePath();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Store the drawing trail on an offscreen canvas
+  const trailCanvas = document.createElement('canvas');
+  trailCanvas.width = W * dpr; trailCanvas.height = H * dpr;
+  const tctx = trailCanvas.getContext('2d');
+  tctx.scale(dpr, dpr);
+
+  let step = 0;
+  let cumDist = 0;
+  let cumTurn = 0;
+  let prevPen = null;
+  const totalSteps = n * 3; // 3 loops for debug
+  const speed = Math.max(1, Math.floor(+document.getElementById('speed').value * 0.6));
+
+  function frame() {
+    if (!drawing) return;
+
+    for (let s = 0; s < speed && step < totalSteps; s++, step++) {
+      const i = step % n;
+      if (step > 0) {
+        const iPrev = (step - 1) % n;
+        cumDist += segLens[iPrev];
+        let da = tangentAngles[i] - tangentAngles[iPrev];
+        while (da > Math.PI) da -= 2 * Math.PI;
+        while (da < -Math.PI) da += 2 * Math.PI;
+        cumTurn += da;
+      }
+
+      const gcx = gcPath[i].gcx;
+      const gcy = gcPath[i].gcy;
+      const gearAngle = cumDist / gearR + cumTurn;
+      const penX = gcx + Math.cos(gearAngle) * penD;
+      const penY = gcy + Math.sin(gearAngle) * penD;
+
+      // Draw trail on offscreen canvas
+      if (prevPen) {
+        const t = step / totalSteps;
+        tctx.beginPath();
+        tctx.moveTo(prevPen.x, prevPen.y);
+        tctx.lineTo(penX, penY);
+        tctx.strokeStyle = getColor(t * 3, colorMode);
+        tctx.lineWidth = 1;
+        tctx.stroke();
+      }
+      prevPen = { x: penX, y: penY };
+    }
+
+    // Redraw everything
+    ctx.fillStyle = '#f0ece4';
+    ctx.fillRect(0, 0, W, H);
+
+    // Contour
+    ctx.beginPath();
+    ctx.moveTo(contour[0].x, contour[0].y);
+    for (let i = 1; i < n; i++) ctx.lineTo(contour[i].x, contour[i].y);
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Trail
+    ctx.drawImage(trailCanvas, 0, 0);
+
+    // Current gear position
+    const ci = step > 0 ? (step - 1) % n : 0;
+    const cgcx = gcPath[ci].gcx;
+    const cgcy = gcPath[ci].gcy;
+    const cAngle = cumDist / gearR + cumTurn;
+    const cpx = cgcx + Math.cos(cAngle) * penD;
+    const cpy = cgcy + Math.sin(cAngle) * penD;
+
+    // Draw gear circle
+    ctx.beginPath();
+    ctx.arc(cgcx, cgcy, gearR, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 80, 80, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw contact point
+    const cpt = contour[ci];
+    ctx.beginPath();
+    ctx.arc(cpt.x, cpt.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 200, 0, 0.8)';
+    ctx.fill();
+
+    // Draw gear center
+    ctx.beginPath();
+    ctx.arc(cgcx, cgcy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 80, 80, 0.8)';
+    ctx.fill();
+
+    // Draw pen position
+    ctx.beginPath();
+    ctx.arc(cpx, cpy, 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(80, 80, 255, 0.9)';
+    ctx.fill();
+
+    // Line from center to pen
+    ctx.beginPath();
+    ctx.moveTo(cgcx, cgcy);
+    ctx.lineTo(cpx, cpy);
+    ctx.strokeStyle = 'rgba(80, 80, 255, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Line from contour point to gear center (normal)
+    ctx.beginPath();
+    ctx.moveTo(cpt.x, cpt.y);
+    ctx.lineTo(cgcx, cgcy);
+    ctx.strokeStyle = 'rgba(0, 200, 0, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw gear "teeth" marks for rotation visualization
+    const numMarks = 8;
+    for (let m = 0; m < numMarks; m++) {
+      const a = cAngle + (m / numMarks) * Math.PI * 2;
+      const mx = cgcx + Math.cos(a) * gearR;
+      const my = cgcy + Math.sin(a) * gearR;
+      ctx.beginPath();
+      ctx.arc(mx, my, 2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,80,80,0.4)';
+      ctx.fill();
+    }
+
+    setStatus(`デバッグ: step ${step}/${totalSteps} | 🟢接点 🔴ギア中心 🔵ペン`);
+
+    if (step < totalSteps) {
+      animId = requestAnimationFrame(frame);
+    } else {
+      // デバッグアニメーション完了
+      setStatus('デバッグ完了 → 全体描画中...');
+      if (onDone) onDone();
+    }
+  }
+
+  animId = requestAnimationFrame(frame);
+}
+
+// =========================================================
+// EXPORT FUNCTIONS
+// =========================================================
+
+function exportSVG() {
+  if (recordedStrokes.length === 0) {
+    setStatus('先に描画してください');
+    return;
+  }
+
+  setStatus('SVG生成中...');
+
+  // Group strokes by color+width to use fewer path elements
+  const groups = new Map();
+  for (const s of recordedStrokes) {
+    const key = `${s.color}|${s.width}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  }
+
+  let paths = '';
+
+  // Contour outlines
+  for (const contour of recordedContours) {
+    if (contour.length < 2) continue;
+    let d = `M${r(contour[0].x)},${r(contour[0].y)}`;
+    for (let i = 1; i < contour.length; i++) {
+      d += `L${r(contour[i].x)},${r(contour[i].y)}`;
+    }
+    d += 'Z';
+    paths += `  <path d="${d}" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="1.5"/>\n`;
+  }
+
+  // Spirograph strokes — batch into polylines per group for smaller file size
+  for (const [key, strokes] of groups) {
+    const [color, width] = key.split('|');
+
+    // Build continuous polyline segments
+    let d = '';
+    let lastX = null, lastY = null;
+    for (const s of strokes) {
+      if (lastX !== null && Math.abs(s.x1 - lastX) < 0.01 && Math.abs(s.y1 - lastY) < 0.01) {
+        d += `L${r(s.x2)},${r(s.y2)}`;
+      } else {
+        d += `M${r(s.x1)},${r(s.y1)}L${r(s.x2)},${r(s.y2)}`;
+      }
+      lastX = s.x2;
+      lastY = s.y2;
+    }
+    paths += `  <path d="${d}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round"/>\n`;
+  }
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+  <rect width="${W}" height="${H}" fill="#f0ece4"/>
+${paths}</svg>`;
+
+  downloadFile(svg, makeFilename('svg'), 'image/svg+xml');
+  setStatus('SVG保存完了！');
+}
+
+function exportPNG() {
+  if (recordedStrokes.length === 0 && !drawing) {
+    setStatus('先に描画してください');
+    return;
+  }
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = makeFilename('png');
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus('PNG保存完了！');
+  }, 'image/png');
+}
+
+function makeFilename(ext) {
+  const shape = document.getElementById('shapeText').value || 'shape';
+  const gR = document.getElementById('gearRadius').value;
+  const pD = document.getElementById('penDist').value;
+  const lp = document.getElementById('loops').value;
+  return `spiro_${shape}_g${gR}_p${pD}_l${lp}.${ext}`;
+}
+
+function r(v) {
+  return Math.round(v * 100) / 100;
+}
+
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Init
+clearCanvas();
+setTimeout(() => startDraw(false), 400);
+</script>
+</body>
+</html>
