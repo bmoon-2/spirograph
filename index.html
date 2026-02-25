@@ -23,8 +23,20 @@
 
   <div class="controls">
     <div class="control-group">
+      <label>輪郭ソース</label>
+      <select id="sourceMode">
+        <option value="text">文字</option>
+        <option value="svg">SVG</option>
+      </select>
+    </div>
+    <div class="control-group">
       <label>文字 / Shape</label>
       <input type="text" id="shapeText" value="U" maxlength="4">
+    </div>
+    <div class="control-group">
+      <label>SVGアップロード</label>
+      <input type="file" id="svgUpload" accept=".svg,image/svg+xml">
+      <button class="small secondary" onclick="clearUploadedSvg()">SVG解除</button>
     </div>
     <div class="control-group">
       <label>ギア半径</label>
@@ -60,6 +72,9 @@
       <button onclick="startDraw(false)">▶ 描画</button>
     </div>
     <div class="control-group" style="justify-content:flex-end;">
+      <button class="secondary" onclick="previewPathMotion()">▶ パス沿いプレビュー</button>
+    </div>
+    <div class="control-group" style="justify-content:flex-end;">
       <button id="debugBtn" onclick="toggleDebug()">🔍 デバッグ</button>
     </div>
     <div class="control-group" style="justify-content:flex-end;">
@@ -81,6 +96,7 @@
 <script src="js/state.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/contour.js"></script>
+<script src="js/svgImport.js"></script>
 <script src="js/math.js"></script>
 <script src="js/draw.js"></script>
 <script src="js/debug.js"></script>

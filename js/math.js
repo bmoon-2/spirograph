@@ -45,6 +45,55 @@ function getOutwardNormal(pts, i, outSign) {
   };
 }
 
+function pointSegDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = 0;
+  if (len2 > 1e-10) {
+    t = ((px - ax) * dx + (py - ay) * dy) / len2;
+    if (t < 0) t = 0;
+    else if (t > 1) t = 1;
+  }
+  const cx = ax + dx * t;
+  const cy = ay + dy * t;
+  return Math.hypot(px - cx, py - cy);
+}
+
+// Mark gear-center path indices where there is less than gear diameter clearance.
+// Those indices are skipped while rolling state (distance / rotation) keeps advancing.
+function computeBlockedGearIndices(gcPath, contour, allContours, contourIndex, gearR) {
+  const n = contour.length;
+  const blocked = new Array(n).fill(false);
+  // Single contour text (U/ぬ etc.) often has close-by self segments that are not real collisions.
+  // Only check other contours so we avoid false blocking gaps.
+  if (!allContours || allContours.length <= 1) return blocked;
+
+  const threshold = Math.max(0, gearR - 1.2);
+
+  for (let i = 0; i < n; i++) {
+    const px = gcPath[i].gcx;
+    const py = gcPath[i].gcy;
+    let minDist = Infinity;
+
+    for (let ci = 0; ci < allContours.length; ci++) {
+      if (ci === contourIndex) continue;
+      const c = allContours[ci];
+      const cn = c.length;
+      for (let j = 0; j < cn; j++) {
+        const a = c[j];
+        const b = c[(j + 1) % cn];
+        const dist = pointSegDist(px, py, a.x, a.y, b.x, b.y);
+        if (dist < minDist) minDist = dist;
+      }
+    }
+
+    blocked[i] = minDist < threshold;
+  }
+
+  return blocked;
+}
+
 // =========================================================
 // Pre-compute gear-center path with minimum-distance guarantee.
 //

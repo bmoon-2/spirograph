@@ -15,6 +15,9 @@ const W = CSS_W, H = CSS_H;
 let animId = null;
 let drawing = false;
 let debugMode = false;
+let contourSource = 'text'; // 'text' | 'svg'
+let uploadedSvgName = '';
+let uploadedContours = [];
 
 // Record all strokes for SVG export
 // Each entry: { x1, y1, x2, y2, color, width }

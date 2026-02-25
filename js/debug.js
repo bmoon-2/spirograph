@@ -2,11 +2,13 @@
 // DEBUG MODE - gear rolling animation through all loops
 // =========================================================
 
-function drawDebug(contours, gearR, penD, totalLoops, colorMode) {
+function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) {
   const contour = contours[0]; // just show first contour
   const n = contour.length;
   const outSign = getOutwardSign(contour);
+  const outerProfile = buildOuterRadiusProfile(contour);
   const { path: gcPath, segLens, tangentAngles } = buildGearCenterPath(contour, gearR, outSign);
+  const blocked = computeBlockedGearIndices(gcPath, contour, contours, 0, gearR);
 
   // Draw the contour more visibly
   ctx.beginPath();
@@ -27,6 +29,8 @@ function drawDebug(contours, gearR, penD, totalLoops, colorMode) {
   let cumDist = 0;
   let cumTurn = 0;
   let prevPen = null;
+  let lastFreeIndex = 0;
+  let lastFreeAngle = 0;
   const totalSteps = n * totalLoops; // animate through all loops
 
   // Debug speed: based on contour length only (not totalLoops),
@@ -51,11 +55,33 @@ function drawDebug(contours, gearR, penD, totalLoops, colorMode) {
       const gcx = gcPath[i].gcx;
       const gcy = gcPath[i].gcy;
       const gearAngle = cumDist / gearR + cumTurn;
+
+      if (blocked[i]) {
+        prevPen = null;
+        continue;
+      }
+
       const penX = gcx + Math.cos(gearAngle) * penD;
       const penY = gcy + Math.sin(gearAngle) * penD;
 
+      if (!pointOnOuterShell(outerProfile, penX, penY)) {
+        prevPen = null;
+        continue;
+      }
+      lastFreeIndex = i;
+      lastFreeAngle = gearAngle;
+
+      if (!pointStaysOutsideShape(isInsideShape, contours, penX, penY, gearR)) {
+        prevPen = null;
+        continue;
+      }
+
       // Draw trail on offscreen canvas
       if (prevPen) {
+        if (!segmentStaysOutsideShape(isInsideShape, contours, prevPen.x, prevPen.y, penX, penY, gearR, penD)) {
+          prevPen = null;
+          continue;
+        }
         const t = step / totalSteps;
         tctx.beginPath();
         tctx.moveTo(prevPen.x, prevPen.y);
@@ -84,10 +110,10 @@ function drawDebug(contours, gearR, penD, totalLoops, colorMode) {
     ctx.drawImage(trailCanvas, 0, 0, W, H);
 
     // Current gear position (use last step in this frame's batch)
-    const ci = step > 0 ? (step - 1) % n : 0;
+    const ci = lastFreeIndex;
     const cgcx = gcPath[ci].gcx;
     const cgcy = gcPath[ci].gcy;
-    const cAngle = cumDist / gearR + cumTurn;
+    const cAngle = lastFreeAngle;
     const cpx = cgcx + Math.cos(cAngle) * penD;
     const cpy = cgcy + Math.sin(cAngle) * penD;
 

@@ -56,6 +56,7 @@ h1 {
 }
 
 .control-group input[type="text"],
+.control-group input[type="file"],
 .control-group select {
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.12);
@@ -66,6 +67,10 @@ h1 {
   font-size: 1rem;
   width: 100px;
   outline: none;
+}
+.control-group input[type="file"] {
+  width: 190px;
+  font-size: 0.78rem;
 }
 
 .control-group input[type="range"] {
@@ -102,6 +107,10 @@ button:hover {
 button.secondary {
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.15);
+}
+button.small {
+  font-size: 0.72rem;
+  padding: 6px 10px;
 }
 button.active {
   background: rgba(255,180,50,0.3);

@@ -7,7 +7,10 @@ function r(v) {
 }
 
 function makeFilename(ext) {
-  const shape = document.getElementById('shapeText').value || 'shape';
+  const isSvg = contourSource === 'svg' && uploadedSvgName;
+  const shape = isSvg
+    ? uploadedSvgName.replace(/\.svg$/i, '')
+    : (document.getElementById('shapeText').value || 'shape');
   const gR = document.getElementById('gearRadius').value;
   const pD = document.getElementById('penDist').value;
   const lp = document.getElementById('loops').value;

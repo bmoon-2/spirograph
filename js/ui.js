@@ -5,7 +5,27 @@ document.querySelectorAll('input[type=range]').forEach(inp => {
   });
 });
 
-function setShape(s) { document.getElementById('shapeText').value = s; }
+const sourceModeEl = document.getElementById('sourceMode');
+if (sourceModeEl) {
+  sourceModeEl.addEventListener('change', e => {
+    setContourSource(e.target.value);
+  });
+}
+
+const svgUploadEl = document.getElementById('svgUpload');
+if (svgUploadEl) {
+  svgUploadEl.addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    handleSvgUploadFile(file);
+  });
+}
+
+function setShape(s) {
+  document.getElementById('shapeText').value = s;
+  const sourceSel = document.getElementById('sourceMode');
+  if (sourceSel) sourceSel.value = 'text';
+  setContourSource('text');
+}
 function setStatus(s) { document.getElementById('status').textContent = s; }
 
 function clearCanvas() {
