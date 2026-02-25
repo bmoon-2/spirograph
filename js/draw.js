@@ -315,38 +315,64 @@ function drawContourSpiro(contour, contourIndex, allContours, isInsideShape, gea
   const n = contour.length;
   const outSign = getOutwardSign(contour);
   const outerProfile = buildOuterRadiusProfile(contour);
-  const { path: gcPath, segLens, tangentAngles } = buildGearCenterPath(contour, gearR, outSign);
+  const { path: gcPath } = buildGearCenterPath(contour, gearR, outSign);
   const blocked = computeBlockedGearIndices(gcPath, contour, allContours, contourIndex, gearR);
 
-  const totalSteps = n * totalLoops;
-  let step = 0;
-  let cumDist = 0;
-  let cumTurn = 0;
+  const gcSegLens = new Array(n);
+  const gcCum = new Array(n + 1);
+  gcCum[0] = 0;
+  for (let i = 0; i < n; i++) {
+    const a = gcPath[i];
+    const b = gcPath[(i + 1) % n];
+    const len = Math.hypot(b.gcx - a.gcx, b.gcy - a.gcy);
+    gcSegLens[i] = len;
+    gcCum[i + 1] = gcCum[i] + len;
+  }
+  const totalGcLen = gcCum[n];
+  if (totalGcLen <= 1e-6) {
+    if (onDone) onDone();
+    return;
+  }
+
+  const totalTravel = totalGcLen * totalLoops;
+  let travel = 0;
+  let gearAngle = 0;
+  let segIdx = 0;
   let prevPen = null;
 
   const speedVal = +document.getElementById('speed').value;
-  const stepsPerFrame = Math.max(1, Math.floor(speedVal * n * totalLoops / 500));
+  const ds = Math.max(0.3, Math.min(1.1, totalGcLen / Math.max(240, n)));
+  const stepsPerFrame = Math.max(1, Math.floor(speedVal * 6));
+
+  function sampleCenterAt(sLocal) {
+    while (segIdx < n - 1 && gcCum[segIdx + 1] < sLocal) segIdx++;
+    while (segIdx > 0 && gcCum[segIdx] > sLocal) segIdx--;
+    const len = gcSegLens[segIdx] || 1e-6;
+    const t = (sLocal - gcCum[segIdx]) / len;
+    const a = gcPath[segIdx];
+    const b = gcPath[(segIdx + 1) % n];
+    return {
+      i: segIdx,
+      gcx: a.gcx + (b.gcx - a.gcx) * t,
+      gcy: a.gcy + (b.gcy - a.gcy) * t,
+    };
+  }
 
   function frame() {
     if (!drawing) return;
 
-    for (let s = 0; s < stepsPerFrame && step < totalSteps; s++, step++) {
-      const i = step % n;
+    for (let s = 0; s < stepsPerFrame && travel < totalTravel; s++) {
+      const prevLocal = travel % totalGcLen;
+      const nextTravel = Math.min(totalTravel, travel + ds);
+      const local = nextTravel % totalGcLen;
+      if (local < prevLocal) segIdx = 0; // loop wrapped
 
-      // Accumulate distance and contour turning angle
-      if (step > 0) {
-        const iPrev = (step - 1) % n;
-        cumDist += segLens[iPrev];
-        // Accumulate change in contour tangent direction (orbital turning)
-        let da = tangentAngles[i] - tangentAngles[iPrev];
-        while (da > Math.PI) da -= 2 * Math.PI;
-        while (da < -Math.PI) da += 2 * Math.PI;
-        cumTurn += da;
-      }
-
-      const gcx = gcPath[i].gcx;
-      const gcy = gcPath[i].gcy;
-      const gearAngle = cumDist / gearR + cumTurn;
+      const sample = sampleCenterAt(local);
+      const i = sample.i;
+      const gcx = sample.gcx;
+      const gcy = sample.gcy;
+      gearAngle += (nextTravel - travel) / gearR;
+      travel = nextTravel;
 
       if (blocked[i]) {
         prevPen = null;
@@ -371,7 +397,7 @@ function drawContourSpiro(contour, contourIndex, allContours, isInsideShape, gea
           prevPen = null;
           continue;
         }
-        const t = step / totalSteps;
+        const t = travel / totalTravel;
         const color = getColor(t * totalLoops * 0.3, colorMode);
         ctx.beginPath();
         ctx.moveTo(prevPen.x, prevPen.y);
@@ -384,8 +410,8 @@ function drawContourSpiro(contour, contourIndex, allContours, isInsideShape, gea
       prevPen = { x: penX, y: penY };
     }
 
-    setStatus(`描画中... ${Math.min(100, (step / totalSteps * 100) | 0)}%`);
-    if (step < totalSteps) animId = requestAnimationFrame(frame);
+    setStatus(`描画中... ${Math.min(100, (travel / totalTravel * 100) | 0)}%`);
+    if (travel < totalTravel) animId = requestAnimationFrame(frame);
     else if (onDone) onDone();
   }
   animId = requestAnimationFrame(frame);
