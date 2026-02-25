@@ -6,7 +6,6 @@ function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) 
   const contour = contours[0]; // just show first contour
   const n = contour.length;
   const outSign = getOutwardSign(contour);
-  const outerProfile = buildOuterRadiusProfile(contour);
   const { path: gcPath, segLens, tangentAngles } = buildGearCenterPath(contour, gearR, outSign);
   const blocked = computeBlockedGearIndices(gcPath, contour, contours, 0, gearR);
 
@@ -63,11 +62,6 @@ function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) 
 
       const penX = gcx + Math.cos(gearAngle) * penD;
       const penY = gcy + Math.sin(gearAngle) * penD;
-
-      if (!pointOnOuterShell(outerProfile, penX, penY)) {
-        prevPen = null;
-        continue;
-      }
       lastFreeIndex = i;
       lastFreeAngle = gearAngle;
 

@@ -215,50 +215,6 @@ function pointStaysOutsideShape(isInsideShape, contours, x, y, gearR) {
   return minDistToContours(contours, x, y) <= insideMargin;
 }
 
-function buildOuterRadiusProfile(contour) {
-  const c = getCentroid(contour);
-  const bins = 720;
-  const maxR = new Array(bins).fill(-Infinity);
-  for (let i = 0; i < contour.length; i++) {
-    const dx = contour[i].x - c.x;
-    const dy = contour[i].y - c.y;
-    const r = Math.hypot(dx, dy);
-    let a = Math.atan2(dy, dx);
-    if (a < 0) a += Math.PI * 2;
-    const bi = (a / (Math.PI * 2) * bins) | 0;
-    if (r > maxR[bi]) maxR[bi] = r;
-  }
-  // Fill empty bins by nearest previous/next finite values.
-  let last = -Infinity;
-  for (let i = 0; i < bins; i++) {
-    if (Number.isFinite(maxR[i])) last = maxR[i];
-    else if (Number.isFinite(last)) maxR[i] = last;
-  }
-  last = -Infinity;
-  for (let i = bins - 1; i >= 0; i--) {
-    if (Number.isFinite(maxR[i])) last = maxR[i];
-    else if (Number.isFinite(last)) maxR[i] = last;
-  }
-  for (let i = 0; i < bins; i++) if (!Number.isFinite(maxR[i])) maxR[i] = 0;
-  return { cx: c.x, cy: c.y, bins, maxR };
-}
-
-function pointOnOuterShell(profile, x, y) {
-  const dx = x - profile.cx;
-  const dy = y - profile.cy;
-  const r = Math.hypot(dx, dy);
-  let a = Math.atan2(dy, dx);
-  if (a < 0) a += Math.PI * 2;
-  const b = (a / (Math.PI * 2) * profile.bins) | 0;
-  let ref = 0;
-  for (let k = -6; k <= 6; k++) {
-    const bi = (b + k + profile.bins) % profile.bins;
-    if (profile.maxR[bi] > ref) ref = profile.maxR[bi];
-  }
-  // Keep points near the outer envelope; reject deeper interior tracks.
-  return r >= ref - 1;
-}
-
 function startDraw(debug) {
   if (animId) cancelAnimationFrame(animId);
   drawing = false;
@@ -314,7 +270,6 @@ function drawAllContours(contours, isInsideShape, gearR, penD, totalLoops, color
 function drawContourSpiro(contour, contourIndex, allContours, isInsideShape, gearR, penD, totalLoops, colorMode, onDone) {
   const n = contour.length;
   const outSign = getOutwardSign(contour);
-  const outerProfile = buildOuterRadiusProfile(contour);
   const { path: gcPath } = buildGearCenterPath(contour, gearR, outSign);
   const blocked = computeBlockedGearIndices(gcPath, contour, allContours, contourIndex, gearR);
 
@@ -381,11 +336,6 @@ function drawContourSpiro(contour, contourIndex, allContours, isInsideShape, gea
 
       const penX = gcx + Math.cos(gearAngle) * penD;
       const penY = gcy + Math.sin(gearAngle) * penD;
-
-      if (!pointOnOuterShell(outerProfile, penX, penY)) {
-        prevPen = null;
-        continue;
-      }
 
       if (!pointStaysOutsideShape(isInsideShape, allContours, penX, penY, gearR)) {
         prevPen = null;
