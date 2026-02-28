@@ -1,3 +1,5 @@
+const BUILD_ID = 'clipper-20260228-1';
+
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 

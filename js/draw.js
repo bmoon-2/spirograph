@@ -215,6 +215,345 @@ function pointStaysOutsideShape(isInsideShape, contours, x, y, gearR) {
   return minDistToContours(contours, x, y) <= insideMargin;
 }
 
+function buildContactRollingData(contour, gearR, outSign) {
+  const n = contour.length;
+  const normals = new Array(n);
+  const centers = new Array(n);
+  const segLens = new Array(n);
+  const cum = new Array(n + 1);
+  cum[0] = 0;
+
+  for (let i = 0; i < n; i++) {
+    const a = contour[i];
+    const b = contour[(i + 1) % n];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    segLens[i] = len;
+    cum[i + 1] = cum[i] + len;
+
+    let nx, ny;
+    if (len > 1e-6) {
+      nx = outSign * (-dy / len);
+      ny = outSign * ( dx / len);
+    } else {
+      const nrm = getOutwardNormal(contour, i, outSign);
+      nx = nrm.x;
+      ny = nrm.y;
+    }
+    normals[i] = { x: nx, y: ny };
+    centers[i] = { gcx: a.x + nx * gearR, gcy: a.y + ny * gearR };
+  }
+
+  return { normals, centers, segLens, cum, totalLen: cum[n] };
+}
+
+function computeContactBlockedIndices(centers, contour, allContours, contourIndex, gearR) {
+  const n = contour.length;
+  const blocked = new Array(n).fill(false);
+  const localSkip = 6;
+  const threshold = Math.max(0, gearR - 1.0);
+  const centroid = getCentroid(contour);
+  const radial = new Array(n);
+  let minRad = Infinity;
+  let maxRad = 0;
+
+  for (let i = 0; i < n; i++) {
+    const dx = centers[i].gcx - centroid.x;
+    const dy = centers[i].gcy - centroid.y;
+    const r = Math.hypot(dx, dy);
+    radial[i] = r;
+    if (r < minRad) minRad = r;
+    if (r > maxRad) maxRad = r;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const px = centers[i].gcx;
+    const py = centers[i].gcy;
+    let minDist = Infinity;
+
+    for (let ci = 0; ci < allContours.length; ci++) {
+      const c = allContours[ci];
+      const cn = c.length;
+      for (let j = 0; j < cn; j++) {
+        if (ci === contourIndex) {
+          const d = Math.abs(j - i);
+          const cd = Math.min(d, n - d);
+          if (cd <= localSkip) continue;
+        }
+        const a = c[j];
+        const b = c[(j + 1) % cn];
+        const dist = pointSegDist(px, py, a.x, a.y, b.x, b.y);
+        if (dist < minDist) minDist = dist;
+      }
+    }
+
+    blocked[i] = minDist < threshold;
+  }
+
+  function collectRuns(blockedArr) {
+    const allowed = blockedArr.map(v => !v);
+    const runs = [];
+    let i = 0;
+    while (i < n) {
+      if (!allowed[i]) { i++; continue; }
+      let j = i;
+      while (j < n && allowed[j]) j++;
+      runs.push({ start: i, len: j - i, meanR: 0 });
+      i = j;
+    }
+    if (runs.length > 1 && allowed[0] && allowed[n - 1]) {
+      runs[0].start = runs[runs.length - 1].start;
+      runs[0].len += runs[runs.length - 1].len;
+      runs.pop();
+    }
+    for (let r = 0; r < runs.length; r++) {
+      const run = runs[r];
+      let sum = 0;
+      for (let k = 0; k < run.len; k++) {
+        const idx = (run.start + k) % n;
+        sum += radial[idx];
+      }
+      run.meanR = sum / Math.max(1, run.len);
+    }
+    return runs;
+  }
+
+  // Outer-shell preference:
+  // If radius spread is large (concave glyphs), suppress low-radius runs so
+  // the gear stays on the exterior branch instead of jumping into inner lobes.
+  const radialSpread = maxRad - minRad;
+  const baseRuns = collectRuns(blocked);
+  // Deep single-notch shapes (e.g. V): trim only the very bottom of the notch
+  // so the path does not dive into the center cusp.
+  if (baseRuns.length === 1 && minRad < maxRad * 0.05) {
+    const apexCut = maxRad * 0.25;
+    for (let i = 0; i < n; i++) {
+      if (radial[i] < apexCut) blocked[i] = true;
+    }
+  }
+
+  if (baseRuns.length >= 3 && radialSpread > gearR * 1.25) {
+    let maxBaseMeanR = 0;
+    let minBaseMeanR = Infinity;
+    for (let r = 0; r < baseRuns.length; r++) {
+      const mr = baseRuns[r].meanR;
+      if (mr > maxBaseMeanR) maxBaseMeanR = mr;
+      if (mr < minBaseMeanR) minBaseMeanR = mr;
+    }
+    // Apply only when there are clearly inner branches.
+    if (minBaseMeanR < maxBaseMeanR * 0.6) {
+      const shellCut = maxRad * 0.64;
+      for (let i = 0; i < n; i++) {
+        if (radial[i] < shellCut) blocked[i] = true;
+      }
+    }
+  }
+
+  // Keep outer runs preferentially: remove low-radius interior branches.
+  const runs = collectRuns(blocked);
+  if (runs.length > 1) {
+    let maxMeanR = 0;
+    for (let r = 0; r < runs.length; r++) {
+      const run = runs[r];
+      if (run.meanR > maxMeanR) maxMeanR = run.meanR;
+    }
+    const keepR = maxMeanR * 0.72;
+    for (let r = 0; r < runs.length; r++) {
+      const run = runs[r];
+      const keep = run.meanR >= keepR || run.len >= 120;
+      if (keep) continue;
+      for (let k = 0; k < run.len; k++) blocked[(run.start + k) % n] = true;
+    }
+  }
+
+  return blocked;
+}
+
+function buildContinuousRollTrack(contour, roll, blocked, gearR) {
+  const n = contour.length;
+  if (n < 3 || typeof ClipperLib === 'undefined') {
+    return { fence: [], centers: [], normals: [], segLens: [], cum: [0], totalLen: 0 };
+  }
+
+  const centroid = getCentroid(contour);
+  const scale = 128;
+  let path = contour.map(p => ({
+    X: Math.round(p.x * scale),
+    Y: Math.round(p.y * scale),
+  }));
+
+  path = ClipperLib.Clipper.CleanPolygon(path, Math.max(1, Math.round(scale * 0.08)));
+  if (!path || path.length < 3) {
+    return { fence: [], centers: [], normals: [], segLens: [], cum: [0], totalLen: 0 };
+  }
+
+  // Keep the input orientation stable so positive delta offsets toward the
+  // geometric outside for a single outer contour.
+  if (!ClipperLib.Clipper.Orientation(path)) path = path.slice().reverse();
+
+  const co = new ClipperLib.ClipperOffset(
+    2,
+    Math.max(1, Math.round(scale * 0.08))
+  );
+  co.AddPath(path, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
+  const solution = new ClipperLib.Paths();
+  co.Execute(solution, Math.round(gearR * scale));
+
+  if (!solution.length) {
+    return { fence: [], centers: [], normals: [], segLens: [], cum: [0], totalLen: 0 };
+  }
+
+  function pathArea(poly) {
+    let area = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      area += a.X * b.Y - b.X * a.Y;
+    }
+    return area * 0.5;
+  }
+
+  let best = solution[0];
+  let bestArea = Math.abs(pathArea(best));
+  for (let i = 1; i < solution.length; i++) {
+    const area = Math.abs(pathArea(solution[i]));
+    if (area > bestArea) {
+      best = solution[i];
+      bestArea = area;
+    }
+  }
+
+  best = ClipperLib.Clipper.CleanPolygon(best, Math.max(1, Math.round(scale * 0.06)));
+  if (!best || best.length < 3) {
+    return { fence: [], centers: [], normals: [], segLens: [], cum: [0], totalLen: 0 };
+  }
+
+  function resampleClosedCenters(points, count) {
+    const m = points.length;
+    const segLens = new Array(m);
+    const cum = new Array(m + 1);
+    cum[0] = 0;
+    for (let i = 0; i < m; i++) {
+      const a = points[i];
+      const b = points[(i + 1) % m];
+      const len = Math.hypot(b.gcx - a.gcx, b.gcy - a.gcy);
+      segLens[i] = len;
+      cum[i + 1] = cum[i] + len;
+    }
+    const totalLen = cum[m];
+    if (totalLen <= 1e-6) return points.slice();
+    const step = totalLen / count;
+    const out = [];
+    let segIdx = 0;
+    for (let i = 0; i < count; i++) {
+      const target = i * step;
+      while (segIdx < m - 1 && cum[segIdx + 1] < target) segIdx++;
+      const len = segLens[segIdx] || 1e-6;
+      const t = (target - cum[segIdx]) / len;
+      const a = points[segIdx];
+      const b = points[(segIdx + 1) % m];
+      out.push({
+        gcx: a.gcx + (b.gcx - a.gcx) * t,
+        gcy: a.gcy + (b.gcy - a.gcy) * t,
+      });
+    }
+    return out;
+  }
+
+  function chaikinClosedCenters(points, iterations) {
+    let pts = points.slice();
+    for (let iter = 0; iter < iterations; iter++) {
+      if (pts.length < 3) break;
+      const next = [];
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        next.push({
+          gcx: a.gcx * 0.75 + b.gcx * 0.25,
+          gcy: a.gcy * 0.75 + b.gcy * 0.25,
+        });
+        next.push({
+          gcx: a.gcx * 0.25 + b.gcx * 0.75,
+          gcy: a.gcy * 0.25 + b.gcy * 0.75,
+        });
+      }
+      pts = next;
+    }
+    return pts;
+  }
+
+  function minDistToContour(x, y) {
+    let minD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const a = contour[i];
+      const b = contour[(i + 1) % n];
+      const d = pointSegDist(x, y, a.x, a.y, b.x, b.y);
+      if (d < minD) minD = d;
+    }
+    return minD;
+  }
+
+  let centers = best.map(p => ({
+    gcx: p.X / scale,
+    gcy: p.Y / scale,
+  }));
+
+  centers = chaikinClosedCenters(centers, 1);
+  centers = resampleClosedCenters(centers, Math.max(260, Math.min(1100, contour.length)));
+
+  const m = centers.length;
+  const normals = new Array(m);
+  const fence = new Array(m);
+  for (let i = 0; i < m; i++) {
+    const p = centers[(i - 1 + m) % m];
+    const c = centers[i];
+    const q = centers[(i + 1) % m];
+    const dx = q.gcx - p.gcx;
+    const dy = q.gcy - p.gcy;
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len;
+    let ny = dx / len;
+
+    const candidateA = { x: c.gcx - nx * gearR, y: c.gcy - ny * gearR };
+    const candidateB = { x: c.gcx + nx * gearR, y: c.gcy + ny * gearR };
+    const dA = minDistToContour(candidateA.x, candidateA.y);
+    const dB = minDistToContour(candidateB.x, candidateB.y);
+
+    if (dA > dB) {
+      nx = -nx;
+      ny = -ny;
+      fence[i] = candidateB;
+    } else {
+      fence[i] = candidateA;
+    }
+
+    // Fallback if the contour-distance heuristic is ambiguous.
+    const vx = c.gcx - centroid.x;
+    const vy = c.gcy - centroid.y;
+    if (Math.abs(dA - dB) < 0.5 && nx * vx + ny * vy < 0) {
+      nx = -nx;
+      ny = -ny;
+      fence[i] = { x: c.gcx - nx * gearR, y: c.gcy - ny * gearR };
+    }
+
+    normals[i] = { x: nx, y: ny };
+  }
+
+  const segLens = new Array(m);
+  const cum = new Array(m + 1);
+  cum[0] = 0;
+  for (let i = 0; i < m; i++) {
+    const a = fence[i];
+    const b = fence[(i + 1) % m];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    segLens[i] = len;
+    cum[i + 1] = cum[i] + len;
+  }
+
+  return { fence, centers, normals, segLens, cum, totalLen: cum[m] };
+}
+
 function startDraw(debug) {
   if (animId) cancelAnimationFrame(animId);
   drawing = false;
@@ -268,48 +607,53 @@ function drawAllContours(contours, isInsideShape, gearR, penD, totalLoops, color
 }
 
 function drawContourSpiro(contour, contourIndex, allContours, isInsideShape, gearR, penD, totalLoops, colorMode, onDone) {
-  const n = contour.length;
   const outSign = getOutwardSign(contour);
-  const { path: gcPath } = buildGearCenterPath(contour, gearR, outSign);
-  const blocked = computeBlockedGearIndices(gcPath, contour, allContours, contourIndex, gearR);
-
-  const gcSegLens = new Array(n);
-  const gcCum = new Array(n + 1);
-  gcCum[0] = 0;
-  for (let i = 0; i < n; i++) {
-    const a = gcPath[i];
-    const b = gcPath[(i + 1) % n];
-    const len = Math.hypot(b.gcx - a.gcx, b.gcy - a.gcy);
-    gcSegLens[i] = len;
-    gcCum[i + 1] = gcCum[i] + len;
-  }
-  const totalGcLen = gcCum[n];
-  if (totalGcLen <= 1e-6) {
+  const roll = buildContactRollingData(contour, gearR, outSign);
+  const blocked = computeContactBlockedIndices(roll.centers, contour, allContours, contourIndex, gearR);
+  const track = buildContinuousRollTrack(contour, roll, blocked, gearR);
+  if (track.totalLen <= 1e-6) {
     if (onDone) onDone();
     return;
   }
 
-  const totalTravel = totalGcLen * totalLoops;
+  const totalTravel = track.totalLen * totalLoops;
   let travel = 0;
-  let gearAngle = 0;
+  let gearSpin = 0;
   let segIdx = 0;
   let prevPen = null;
 
   const speedVal = +document.getElementById('speed').value;
-  const ds = Math.max(0.3, Math.min(1.1, totalGcLen / Math.max(240, n)));
+  const ds = Math.max(0.3, Math.min(1.1, track.totalLen / Math.max(260, track.fence.length)));
   const stepsPerFrame = Math.max(1, Math.floor(speedVal * 6));
 
-  function sampleCenterAt(sLocal) {
-    while (segIdx < n - 1 && gcCum[segIdx + 1] < sLocal) segIdx++;
-    while (segIdx > 0 && gcCum[segIdx] > sLocal) segIdx--;
-    const len = gcSegLens[segIdx] || 1e-6;
-    const t = (sLocal - gcCum[segIdx]) / len;
-    const a = gcPath[segIdx];
-    const b = gcPath[(segIdx + 1) % n];
+  function sampleAt(sLocal) {
+    const m = track.fence.length;
+    while (segIdx < m - 1 && track.cum[segIdx + 1] < sLocal) segIdx++;
+    while (segIdx > 0 && track.cum[segIdx] > sLocal) segIdx--;
+    const i = segIdx;
+    const i2 = (i + 1) % m;
+    const len = track.segLens[i] || 1e-6;
+    const t = (sLocal - track.cum[i]) / len;
+    const ca = track.centers[i];
+    const cb = track.centers[i2];
+    const fa = track.fence[i];
+    const fb = track.fence[i2];
+    const gcx = ca.gcx + (cb.gcx - ca.gcx) * t;
+    const gcy = ca.gcy + (cb.gcy - ca.gcy) * t;
+    const fenceX = fa.x + (fb.x - fa.x) * t;
+    const fenceY = fa.y + (fb.y - fa.y) * t;
+    let nx = track.normals[i].x * (1 - t) + track.normals[i2].x * t;
+    let ny = track.normals[i].y * (1 - t) + track.normals[i2].y * t;
+    const nl = Math.hypot(nx, ny) || 1;
+    nx /= nl;
+    ny /= nl;
     return {
-      i: segIdx,
-      gcx: a.gcx + (b.gcx - a.gcx) * t,
-      gcy: a.gcy + (b.gcy - a.gcy) * t,
+      nx,
+      ny,
+      gcx,
+      gcy,
+      fenceX,
+      fenceY,
     };
   }
 
@@ -317,36 +661,22 @@ function drawContourSpiro(contour, contourIndex, allContours, isInsideShape, gea
     if (!drawing) return;
 
     for (let s = 0; s < stepsPerFrame && travel < totalTravel; s++) {
-      const prevLocal = travel % totalGcLen;
+      const prevLocal = travel % track.totalLen;
       const nextTravel = Math.min(totalTravel, travel + ds);
-      const local = nextTravel % totalGcLen;
+      const local = nextTravel % track.totalLen;
       if (local < prevLocal) segIdx = 0; // loop wrapped
 
-      const sample = sampleCenterAt(local);
-      const i = sample.i;
+      const sample = sampleAt(local);
       const gcx = sample.gcx;
       const gcy = sample.gcy;
-      gearAngle += (nextTravel - travel) / gearR;
+      gearSpin += (nextTravel - travel) / gearR;
       travel = nextTravel;
 
-      if (blocked[i]) {
-        prevPen = null;
-        continue;
-      }
-
+      const gearAngle = Math.atan2(sample.ny, sample.nx) + Math.PI + gearSpin;
       const penX = gcx + Math.cos(gearAngle) * penD;
       const penY = gcy + Math.sin(gearAngle) * penD;
 
-      if (!pointStaysOutsideShape(isInsideShape, allContours, penX, penY, gearR)) {
-        prevPen = null;
-        continue;
-      }
-
       if (prevPen) {
-        if (!segmentStaysOutsideShape(isInsideShape, allContours, prevPen.x, prevPen.y, penX, penY, gearR, penD)) {
-          prevPen = null;
-          continue;
-        }
         const t = travel / totalTravel;
         const color = getColor(t * totalLoops * 0.3, colorMode);
         ctx.beginPath();

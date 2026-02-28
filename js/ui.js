@@ -26,7 +26,10 @@ function setShape(s) {
   if (sourceSel) sourceSel.value = 'text';
   setContourSource('text');
 }
-function setStatus(s) { document.getElementById('status').textContent = s; }
+function setStatus(s) {
+  const suffix = ` [${BUILD_ID}${typeof ClipperLib !== 'undefined' ? ' +clipper' : ''}]`;
+  document.getElementById('status').textContent = (s || '') + suffix;
+}
 
 function clearCanvas() {
   if (animId) cancelAnimationFrame(animId);

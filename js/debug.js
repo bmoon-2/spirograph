@@ -6,8 +6,14 @@ function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) 
   const contour = contours[0]; // just show first contour
   const n = contour.length;
   const outSign = getOutwardSign(contour);
-  const { path: gcPath, segLens, tangentAngles } = buildGearCenterPath(contour, gearR, outSign);
-  const blocked = computeBlockedGearIndices(gcPath, contour, contours, 0, gearR);
+  const roll = buildContactRollingData(contour, gearR, outSign);
+  const blocked = computeContactBlockedIndices(roll.centers, contour, contours, 0, gearR);
+  const track = buildContinuousRollTrack(contour, roll, blocked, gearR);
+  if (track.totalLen <= 1e-6 || !track.fence.length) {
+    setStatus('デバッグ: 連続トラックを構築できませんでした');
+    drawing = false;
+    return;
+  }
 
   // Draw the contour more visibly
   ctx.beginPath();
@@ -24,59 +30,111 @@ function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) 
   const tctx = trailCanvas.getContext('2d');
   tctx.scale(dpr, dpr);
 
-  let step = 0;
-  let cumDist = 0;
-  let cumTurn = 0;
+  const totalTravel = track.totalLen * totalLoops;
+  let travel = 0;
+  let gearSpin = 0;
+  let segIdx = 0;
   let prevPen = null;
-  let lastFreeIndex = 0;
-  let lastFreeAngle = 0;
-  const totalSteps = n * totalLoops; // animate through all loops
+  let lastSample = {
+    gcx: track.centers[0].gcx,
+    gcy: track.centers[0].gcy,
+    nx: track.normals[0].x,
+    ny: track.normals[0].y,
+    fenceX: track.fence[0].x,
+    fenceY: track.fence[0].y,
+    penX: track.centers[0].gcx + penD,
+    penY: track.centers[0].gcy,
+    angle: 0,
+  };
 
-  // Debug speed: based on contour length only (not totalLoops),
-  // so the gear is always visibly moving regardless of loop count.
   const speedVal = +document.getElementById('speed').value;
-  const stepsPerFrame = Math.max(1, Math.floor(speedVal * n / 300));
+  const ds = Math.max(0.3, Math.min(1.1, track.totalLen / Math.max(260, track.fence.length)));
+  const stepsPerFrame = Math.max(1, Math.floor(speedVal * 6));
+
+  function sampleAt(sLocal) {
+    const m = track.fence.length;
+    while (segIdx < m - 1 && track.cum[segIdx + 1] < sLocal) segIdx++;
+    while (segIdx > 0 && track.cum[segIdx] > sLocal) segIdx--;
+    const i = segIdx;
+    const i2 = (i + 1) % m;
+    const len = track.segLens[i] || 1e-6;
+    const t = (sLocal - track.cum[i]) / len;
+    const ca = track.centers[i];
+    const cb = track.centers[i2];
+    const fa = track.fence[i];
+    const fb = track.fence[i2];
+    const gcx = ca.gcx + (cb.gcx - ca.gcx) * t;
+    const gcy = ca.gcy + (cb.gcy - ca.gcy) * t;
+    const fenceX = fa.x + (fb.x - fa.x) * t;
+    const fenceY = fa.y + (fb.y - fa.y) * t;
+    let nx = track.normals[i].x * (1 - t) + track.normals[i2].x * t;
+    let ny = track.normals[i].y * (1 - t) + track.normals[i2].y * t;
+    const nl = Math.hypot(nx, ny) || 1;
+    nx /= nl;
+    ny /= nl;
+    return {
+      nx,
+      ny,
+      gcx,
+      gcy,
+      fenceX,
+      fenceY,
+    };
+  }
+
+  function drawRollCandidatePath() {
+    for (let i = 0; i < n; i++) {
+      const a = roll.centers[i];
+      const b = roll.centers[(i + 1) % n];
+      ctx.beginPath();
+      ctx.moveTo(a.gcx, a.gcy);
+      ctx.lineTo(b.gcx, b.gcy);
+      const dim = blocked[i] || blocked[(i + 1) % n];
+      ctx.strokeStyle = dim ? 'rgba(255, 90, 90, 0.07)' : 'rgba(255, 90, 90, 0.16)';
+      ctx.lineWidth = dim ? 1 : 1.2;
+      ctx.stroke();
+    }
+  }
+
+  function drawTrackPath() {
+    const pts = track.centers;
+    if (pts.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].gcx, pts[0].gcy);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].gcx, pts[i].gcy);
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(255, 170, 40, 0.72)';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([7, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 
   function frame() {
     if (!drawing) return;
 
-    for (let s = 0; s < stepsPerFrame && step < totalSteps; s++, step++) {
-      const i = step % n;
-      if (step > 0) {
-        const iPrev = (step - 1) % n;
-        cumDist += segLens[iPrev];
-        let da = tangentAngles[i] - tangentAngles[iPrev];
-        while (da > Math.PI) da -= 2 * Math.PI;
-        while (da < -Math.PI) da += 2 * Math.PI;
-        cumTurn += da;
-      }
+    for (let s = 0; s < stepsPerFrame && travel < totalTravel; s++) {
+      const prevLocal = travel % track.totalLen;
+      const nextTravel = Math.min(totalTravel, travel + ds);
+      const local = nextTravel % track.totalLen;
+      if (local < prevLocal) segIdx = 0;
 
-      const gcx = gcPath[i].gcx;
-      const gcy = gcPath[i].gcy;
-      const gearAngle = cumDist / gearR + cumTurn;
+      const sample = sampleAt(local);
+      gearSpin += (nextTravel - travel) / gearR;
+      travel = nextTravel;
 
-      if (blocked[i]) {
-        prevPen = null;
-        continue;
-      }
+      const gearAngle = Math.atan2(sample.ny, sample.nx) + Math.PI + gearSpin;
+      const penX = sample.gcx + Math.cos(gearAngle) * penD;
+      const penY = sample.gcy + Math.sin(gearAngle) * penD;
+      lastSample = {
+        ...sample,
+        penX,
+        penY,
+        angle: gearAngle,
+      };
 
-      const penX = gcx + Math.cos(gearAngle) * penD;
-      const penY = gcy + Math.sin(gearAngle) * penD;
-      lastFreeIndex = i;
-      lastFreeAngle = gearAngle;
-
-      if (!pointStaysOutsideShape(isInsideShape, contours, penX, penY, gearR)) {
-        prevPen = null;
-        continue;
-      }
-
-      // Draw trail on offscreen canvas
       if (prevPen) {
-        if (!segmentStaysOutsideShape(isInsideShape, contours, prevPen.x, prevPen.y, penX, penY, gearR, penD)) {
-          prevPen = null;
-          continue;
-        }
-        const t = step / totalSteps;
+        const t = travel / totalTravel;
         tctx.beginPath();
         tctx.moveTo(prevPen.x, prevPen.y);
         tctx.lineTo(penX, penY);
@@ -100,16 +158,20 @@ function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) 
     ctx.lineWidth = 2;
     ctx.stroke();
 
+    // Raw candidate center path and final continuous track.
+    drawRollCandidatePath();
+    drawTrackPath();
+
     // Trail
     ctx.drawImage(trailCanvas, 0, 0, W, H);
 
-    // Current gear position (use last step in this frame's batch)
-    const ci = lastFreeIndex;
-    const cgcx = gcPath[ci].gcx;
-    const cgcy = gcPath[ci].gcy;
-    const cAngle = lastFreeAngle;
-    const cpx = cgcx + Math.cos(cAngle) * penD;
-    const cpy = cgcy + Math.sin(cAngle) * penD;
+    const cgcx = lastSample.gcx;
+    const cgcy = lastSample.gcy;
+    const cAngle = lastSample.angle;
+    const cpx = lastSample.penX;
+    const cpy = lastSample.penY;
+    const fenceX = lastSample.fenceX;
+    const fenceY = lastSample.fenceY;
 
     // Draw gear circle
     ctx.beginPath();
@@ -118,10 +180,9 @@ function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) 
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Draw contact point
-    const cpt = contour[ci];
+    // Draw exact fence point from the continuous roll track.
     ctx.beginPath();
-    ctx.arc(cpt.x, cpt.y, 4, 0, Math.PI * 2);
+    ctx.arc(fenceX, fenceY, 4, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 200, 0, 0.8)';
     ctx.fill();
 
@@ -145,9 +206,9 @@ function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) 
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Line from contour point to gear center (normal)
+    // Line from fence point to gear center (normal)
     ctx.beginPath();
-    ctx.moveTo(cpt.x, cpt.y);
+    ctx.moveTo(fenceX, fenceY);
     ctx.lineTo(cgcx, cgcy);
     ctx.strokeStyle = 'rgba(0, 200, 0, 0.4)';
     ctx.lineWidth = 1;
@@ -155,7 +216,6 @@ function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) 
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Draw gear "teeth" marks for rotation visualization
     const numMarks = 8;
     for (let m = 0; m < numMarks; m++) {
       const a = cAngle + (m / numMarks) * Math.PI * 2;
@@ -167,10 +227,10 @@ function drawDebug(contours, isInsideShape, gearR, penD, totalLoops, colorMode) 
       ctx.fill();
     }
 
-    const pct = Math.min(100, (step / totalSteps * 100) | 0);
-    setStatus(`デバッグ: ${pct}% | 🟢接点 🔴ギア中心 🔵ペン`);
+    const pct = Math.min(100, (travel / totalTravel * 100) | 0);
+    setStatus(`デバッグ: ${pct}% | 薄赤=元中心候補 橙破線=中心トラック 緑=フェンス点 赤=ギア中心 青=ペン`);
 
-    if (step < totalSteps) {
+    if (travel < totalTravel) {
       animId = requestAnimationFrame(frame);
     } else {
       setStatus('完了！');
